@@ -1,0 +1,7 @@
+releases:
+  - name: vault
+    namespace: default
+    chart: https://github.com/hashicorp/vault-helm/archive/v0.3.1.tar.gz
+    values:
+      - vault.yaml
+    wait: true
