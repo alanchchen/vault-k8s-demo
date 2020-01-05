@@ -29,15 +29,15 @@ $(DIRS):
 
 define download-tool
 %/$(strip $(notdir $(1))):
-	@echo 'Installing $(strip $(notdir $(1)))'
+	@echo -n 'Installing $(strip $(notdir $(1))) ... '
 	$$(Q)curl -sLo $$@ $(strip $(2))
 	$$(Q)chmod +x $$@
-	@echo "'$$(notdir $$@)' installed"
+	@echo "done ✓"
 endef
 
 define download-zip-tool
 %/$(strip $(notdir $(1))):
-	@echo 'Installing $(strip $(notdir $(1)))'
+	@echo -n 'Installing $(strip $(notdir $(1))) ... '
 	$$(eval tmp_dir := $$(shell mktemp -d))
 	$$(eval file := $$(tmp_dir)/$$(notdir $(1)).zip)
 	$(Q)curl -sLo $$(file) $(strip $(2)) && unzip -qq -d $$(dir $$@) $$(file) $(1)
@@ -47,19 +47,19 @@ ifneq ($(strip $(findstring /,$(1))),)
 endif
 	$(Q)chmod +x $$@
 	$(Q)rm -fr $$(tmp_dir)
-	@echo "'$$(notdir $$@)' installed"
+	@echo "done ✓"
 endef
 
 define download-gzip-tool
 %/$(strip $(notdir $(1))):
-	@echo 'Installing $(strip $(notdir $(1)))'
+	@echo -n 'Installing $(strip $(notdir $(1))) ...'
 	$(Q)curl -fsSL $(strip $(2)) | tar -C $$(dir $$@) -xz $(1)
 ifneq ($(strip $(findstring /,$(1))),)
 	$(Q)mv $$(dir $$@)$$(strip $(1)) $$(dir $$@)$$(notdir $(1))
 	$(Q)rm -r $$(dir $$@)$$(dir $(1))
 endif
 	$(Q)chmod +x $$@
-	@echo "'$$(notdir $$@)' installed"
+	@echo "done ✓"
 endef
 
 # ----------
@@ -142,7 +142,11 @@ helmfile: helm
 
 .PHONY: install-services
 install-services: helmfile $(KIND_KUBECONFIG)
+ifeq ($(BUILD_VERBOSE),1)
 	$(Q)helmfile apply
+else
+	$(Q)helmfile -q apply
+endif
 
 # ---------- Vault
 
