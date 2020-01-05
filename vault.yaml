@@ -18,5 +18,14 @@ server:
     storageClass: null
     accessMode: ReadWriteOnce
 
-annotations: |
-  "vault/service-account1": "vault-auth"
+  ingress:
+    enabled: true
+    labels:
+      traffic: external
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/rewrite-target: /$2
+    hosts:
+      - host: localhost
+        paths:
+          - /vault(/|$)(.*)

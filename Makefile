@@ -101,6 +101,8 @@ KIND_CONFIG := $(CURDIR)/kind-cluster.yaml
 KIND_KUBECONFIG := .kubeconfig
 export KUBECONFIG := $(KIND_KUBECONFIG)
 
+cluster: $(KIND_KUBECONFIG)
+
 $(KIND_KUBECONFIG): $(KIND_CONFIG) kind
 ifeq ($(strip $(shell kind get clusters)),)
 	$(Q)kind create cluster --kubeconfig $@ --config $<
@@ -138,43 +140,39 @@ $(foreach p,$(HELM_PLUGINS),$(eval $(call plugin-deps,$(p))))
 
 helmfile: helm
 
-# ---------- Vault
-
-.PHONY: install-vault
-install-vault: helmfile $(KIND_KUBECONFIG)
-	$(Q)kubectl apply -f deploy/vault-auth.yaml
+.PHONY: install-services
+install-services: helmfile $(KIND_KUBECONFIG)
 	$(Q)helmfile apply
 
-SA_NAME := vault-auth
+# ---------- Vault
+
+SA_NAME := vault
 APP_ROLE := db-app
 APP_POLICY := db-app-read
 
 .PHONY: setup-vault
-setup-vault: vault install-vault
+setup-vault: vault install-services
 	$(Q)status=0; while [[ "$$status" != "Running" ]]; do \
 		sleep 3; \
 		status=`kubectl get pods -l app.kubernetes.io/name=vault -o 'jsonpath={.items[0].status.phase}'`; \
 	done
-ifeq ($(strip $(shell kubectl exec vault-0 -- vault secrets list 2>/dev/null | grep database/creds)),)
-	$(Q)kubectl exec vault-0 -- vault secrets enable -path=database/creds/ kv
-endif
-	$(Q)kubectl exec vault-0 -- vault kv put database/creds/db-app username=$(shell openssl rand -hex 8) password=$(shell openssl rand -hex 32)
-	@$(eval SA_SECRET_NAME=$(shell kubectl get sa $(SA_NAME) -o jsonpath="{.secrets[*]['name']}"))
-	@$(eval SA_JWT_TOKEN=$(shell kubectl get secret $(SA_SECRET_NAME) -o jsonpath="{.data.token}" | base64 --decode; echo))
 ifeq ($(strip $(shell kubectl exec vault-0 -- vault auth list 2>/dev/null | grep kubernetes)),)
 	$(Q)kubectl exec vault-0 -- vault auth enable kubernetes
 endif
 	$(Q)kubectl exec vault-0 -- vault write auth/kubernetes/config \
-			token_reviewer_jwt="$(kubectl exec vault-0 -- cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+			token_reviewer_jwt="@/var/run/secrets/kubernetes.io/serviceaccount/token" \
   			kubernetes_host="https://kubernetes" \
   			kubernetes_ca_cert="@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+ifeq ($(strip $(shell kubectl exec vault-0 -- vault secrets list 2>/dev/null | grep database/creds)),)
+	$(Q)kubectl exec vault-0 -- vault secrets enable -path=database/creds/ kv
+endif
+	$(Q)kubectl exec vault-0 -- vault kv put database/creds/db-app username=$(shell openssl rand -hex 8) password=$(shell openssl rand -hex 32)
 	$(Q)kubectl cp vault/$(APP_POLICY).hcl default/vault-0:/tmp/policy.hcl
 	$(Q)kubectl exec vault-0 -- vault policy write $(APP_POLICY) /tmp/policy.hcl
 	$(Q)kubectl exec vault-0 -- vault write auth/kubernetes/role/$(APP_ROLE) \
     		bound_service_account_names=$(SA_NAME) \
     		bound_service_account_namespaces=default \
-    		policies=$(APP_POLICY) \
-    		ttl=336h
+    		policies=$(APP_POLICY)
 
 # ----------
 
@@ -201,9 +199,12 @@ demo: deploy
 clean:
 	$(Q)rm -fr $(BIN_DIR)/* $(KIND_KUBECONFIG)
 
-.PHONY: destroy
-destroy: clean
+.PHONY: destroy-cluster
+destroy-cluster:
 	$(Q)kind delete cluster
+
+.PHONY: destroy
+destroy: destroy-cluster clean
 
 .PHONY: help
 help:
@@ -214,6 +215,7 @@ help:
 	@echo  ''
 	@echo  'Cleaning targets:'
 	@echo  '  clean                       - Remove required tools and the kubeconfig'
+	@echo  '  destroy-cluster             - Destroy the cluster only'
 	@echo  '  destroy                     - Destroy the cluster and clean up'
 
 .PHONY: FORCE
