@@ -1,3 +1,7 @@
+repositories:
+  # To use official "stable" charts a.k.a https://github.com/helm/charts/tree/master/stable
+  - name: stable
+    url: https://kubernetes-charts.storage.googleapis.com
 releases:
   - name: vault
     namespace: default
@@ -5,3 +9,12 @@ releases:
     values:
       - vault.yaml
     wait: true
+  - name: nginx-ingress-controller
+    namespace: default
+    chart: stable/nginx-ingress
+    values:
+      - controller:
+          service:
+            type: NodePort
+            nodePorts:
+              http: 30080
