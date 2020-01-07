@@ -150,7 +150,7 @@ endif
 
 # ---------- Vault
 
-SA_NAME := vault
+SA_NAME := db-app
 APP_ROLE := db-app
 APP_POLICY := db-app-read
 
@@ -160,16 +160,12 @@ setup-vault: vault install-services
 		sleep 3; \
 		status=`kubectl get pods -l app.kubernetes.io/name=vault -o 'jsonpath={.items[0].status.phase}'`; \
 	done
-ifeq ($(strip $(shell kubectl exec vault-0 -- vault auth list 2>/dev/null | grep kubernetes)),)
-	$(Q)kubectl exec vault-0 -- vault auth enable kubernetes
-endif
+	$(Q)kubectl exec vault-0 -- vault auth enable kubernetes || true
 	$(Q)kubectl exec vault-0 -- vault write auth/kubernetes/config \
 			token_reviewer_jwt="@/var/run/secrets/kubernetes.io/serviceaccount/token" \
   			kubernetes_host="https://kubernetes" \
   			kubernetes_ca_cert="@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-ifeq ($(strip $(shell kubectl exec vault-0 -- vault secrets list 2>/dev/null | grep database/creds)),)
-	$(Q)kubectl exec vault-0 -- vault secrets enable -path=database/creds/ kv
-endif
+	$(Q)kubectl exec vault-0 -- vault secrets enable -path=database/creds/ kv || true
 	$(Q)kubectl exec vault-0 -- vault kv put database/creds/db-app username=$(shell openssl rand -hex 8) password=$(shell openssl rand -hex 32)
 	$(Q)kubectl cp vault/$(APP_POLICY).hcl default/vault-0:/tmp/policy.hcl
 	$(Q)kubectl exec vault-0 -- vault policy write $(APP_POLICY) /tmp/policy.hcl
@@ -191,11 +187,11 @@ deploy: kubectl setup
 demo: deploy
 	$(Q)status=0; while [[ "$$status" != "Running" ]]; do \
 		sleep 3; \
-		status=`kubectl get pods -l app=db-app -o 'jsonpath={.items[0].status.phase}'`; \
+		status=`kubectl get pods -l app=db-app -o 'jsonpath={.items[0].status.phase}' 2> /dev/null || echo 0`; \
 	done
 	@echo
 	@echo "Secret: 👇"
-	$(Q)kubectl exec $(shell kubectl get po -l app=db-app -o jsonpath="{.items[0].metadata.name}") -c app -- cat /vault/secrets/db-creds
+	$(Q)kubectl exec $(shell KUBECONFIG=$(KUBECONFIG) kubectl get pods -l app=db-app -o jsonpath='{.items[0].metadata.name}') -c app -- cat /vault/secrets/db-creds
 
 # ----------
 

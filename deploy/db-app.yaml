@@ -1,3 +1,8 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: db-app
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,4 +34,4 @@ spec:
             - sleep
             - "3600"
           imagePullPolicy: IfNotPresent
-      serviceAccountName: vault
+      serviceAccountName: db-app
